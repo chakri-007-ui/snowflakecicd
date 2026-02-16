@@ -37,6 +37,21 @@ jobs:
           import snowflake.connector
           from pathlib import Path
 
+          sql_folder = Path("sql")
+
+          print("Checking folder:", sql_folder)
+          print("Folder exists?", sql_folder.exists())
+
+          print("All files in repo:")
+          for p in Path(".").rglob("*"):
+              print(p)
+
+          sql_files = sorted(sql_folder.glob("*.sql"))
+          print("SQL files found:", sql_files)
+
+          if not sql_files:
+              raise Exception("No SQL files found inside sql/ folder!")
+
           print("Connecting to Snowflake...")
 
           conn = snowflake.connector.connect(
@@ -52,22 +67,11 @@ jobs:
           cursor = conn.cursor()
 
           try:
-              sql_folder = Path("sql")
-              sql_files = sorted(sql_folder.glob("*.sql"))
-
-              if not sql_files:
-                  raise Exception("No SQL files found inside sql/ folder!")
-
               for file in sql_files:
-                  print(f"Executing file: {file}")
-                  sql_content = file.read_text()
-
-                  cursor.execute(sql_content)
-
-              print(" All SQL files executed successfully!")
-
+                  print(f"Executing {file}")
+                  cursor.execute(file.read_text())
+              print("Done")
           finally:
               cursor.close()
               conn.close()
-              print("Connection closed.")
           EOF
