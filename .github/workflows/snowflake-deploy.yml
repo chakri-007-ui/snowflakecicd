@@ -24,7 +24,7 @@ jobs:
 
       - name: Deploy SQL Scripts
         env:
-          # DEV (existing secrets)
+          # DEV Secrets
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -33,7 +33,7 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
-          # PROD (new secrets)
+          # PROD Secrets
           SNOWFLAKE_ACCOUNT_PROD: ${{ secrets.SNOWFLAKE_ACCOUNT_PROD }}
           SNOWFLAKE_USER_PROD: ${{ secrets.SNOWFLAKE_USER_PROD }}
           SNOWFLAKE_PASSWORD_PROD: ${{ secrets.SNOWFLAKE_PASSWORD_PROD }}
@@ -51,6 +51,7 @@ jobs:
           branch = os.getenv("GITHUB_REF_NAME")
           print("Branch:", branch)
 
+          # Choose environment based on branch
           if branch == "main":
               print("Deploying to PROD...")
               account = os.environ["SNOWFLAKE_ACCOUNT_PROD"]
@@ -60,6 +61,7 @@ jobs:
               warehouse = os.environ["SNOWFLAKE_WAREHOUSE_PROD"]
               database = os.environ["SNOWFLAKE_DATABASE_PROD"]
               schema = os.environ["SNOWFLAKE_SCHEMA_PROD"]
+
           else:
               print("Deploying to DEV...")
               account = os.environ["SNOWFLAKE_ACCOUNT"]
@@ -70,29 +72,38 @@ jobs:
               database = os.environ["SNOWFLAKE_DATABASE"]
               schema = os.environ["SNOWFLAKE_SCHEMA"]
 
+          # Read SQL files
           sql_files = sorted(Path("sql").glob("*.sql"))
 
           if not sql_files:
-              raise Exception("No SQL files found inside sql/ folder!")
+              raise Exception("❌ No SQL files found inside sql/ folder!")
 
+          print("SQL files found:", sql_files)
+
+          # Connect to Snowflake
           conn = snowflake.connector.connect(
               user=user,
               password=password,
               account=account,
               role=role,
-              warehouse=warehouse,
-              database=database,
-              schema=schema
+              warehouse=warehouse
           )
 
           cursor = conn.cursor()
 
           try:
-              for file in sql_files:
-                  print(f"Executing {file}")
-                  cursor.execute(file.read_text())
+              # Set database and schema
+              cursor.execute(f"USE DATABASE {database}")
+              cursor.execute(f"USE SCHEMA {schema}")
 
-              print(" Deployment completed successfully!")
+              # Execute each SQL file
+              for file in sql_files:
+                  print(f"Executing: {file}")
+                  sql_content = file.read_text()
+                  cursor.execute(sql_content)
+
+              print("✅ Deployment completed successfully!")
+
           finally:
               cursor.close()
               conn.close()
