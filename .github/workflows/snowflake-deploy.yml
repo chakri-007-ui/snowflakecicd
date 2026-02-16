@@ -1,4 +1,4 @@
-name: Snowflake CI/CD Deployment
+name: Deploy to Snowflake
 
 on:
   push:
@@ -10,34 +10,64 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Install SnowSQL
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install Snowflake Connector
         run: |
-          curl -O https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-1.2.31-linux_x86_64.bash
-          bash snowsql-1.2.31-linux_x86_64.bash
+          pip install snowflake-connector-python
 
-      - name: Deploy SQL scripts to Snowflake
+      - name: Execute SQL Scripts
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USERNAME }}
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
         run: |
-          for file in sql/*.sql
-          do
-            echo "Running $file..."
-            ~/bin/snowsql \
-              -a "$SNOWFLAKE_ACCOUNT" \
-              -u "$SNOWFLAKE_USER" \
-              -p "$SNOWFLAKE_PASSWORD" \
-              -r "$SNOWFLAKE_ROLE" \
-              -w "$SNOWFLAKE_WAREHOUSE" \
-              -d "$SNOWFLAKE_DATABASE" \
-              -s "$SNOWFLAKE_SCHEMA" \
-              -f "$file"
-          done
+          python <<EOF
+          import os
+          import snowflake.connector
+          from pathlib import Path
+
+          print("Connecting to Snowflake...")
+
+          conn = snowflake.connector.connect(
+              user=os.environ["SNOWFLAKE_USER"],
+              password=os.environ["SNOWFLAKE_PASSWORD"],
+              account=os.environ["SNOWFLAKE_ACCOUNT"],
+              role=os.environ["SNOWFLAKE_ROLE"],
+              warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
+              database=os.environ["SNOWFLAKE_DATABASE"],
+              schema=os.environ["SNOWFLAKE_SCHEMA"]
+          )
+
+          cursor = conn.cursor()
+
+          try:
+              sql_folder = Path("sql")
+              sql_files = sorted(sql_folder.glob("*.sql"))
+
+              if not sql_files:
+                  raise Exception("No SQL files found inside sql/ folder!")
+
+              for file in sql_files:
+                  print(f"Executing file: {file}")
+                  sql_content = file.read_text()
+
+                  cursor.execute(sql_content)
+
+              print(" All SQL files executed successfully!")
+
+          finally:
+              cursor.close()
+              conn.close()
+              print("Connection closed.")
+          EOF
